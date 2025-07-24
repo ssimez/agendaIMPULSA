@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agenda IMPULSA 2025</title>
+  <link rel="icon" href="https://www.santafe.gob.ar/favicon.ico" type="image/x-icon" />
+  <style>
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.1); opacity: 0.7; }
+    }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(to bottom right, #fef3c7, #fde68a);
+      margin: 0;
+      padding: 0;
+      color: #1f2937;
+    }
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+    h1 {
+      text-align: center;
+      font-size: 2.5rem;
+      margin-bottom: 1.5rem;
+      background: linear-gradient(to right, #8b5cf6, #ec4899);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      animation: pulse 3s infinite;
+    }
+    .filters {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin-bottom: 2rem;
+    }
+    input, select, button {
+      padding: 0.5rem 1rem;
+      border: 1px solid #d1d5db;
+      border-radius: 0.5rem;
+      font-size: 1rem;
+    }
+    button {
+      background: linear-gradient(to right, #6366f1, #ec4899);
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+    button:hover {
+      background: linear-gradient(to right, #4f46e5, #db2777);
+    }
+    .card {
+      background: white;
+      border-left: 4px solid #8b5cf6;
+      padding: 1rem;
+      margin-bottom: 1rem;
+      border-radius: 0.75rem;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      transition: transform 0.2s ease;
+    }
+    .card:hover {
+      transform: scale(1.02);
+    }
+    .category {
+      font-size: 0.85rem;
+      color: #7c3aed;
+      margin-top: 0.5rem;
+    }
+    .loader {
+      text-align: center;
+      padding: 3rem 0;
+      font-size: 1.2rem;
+      color: #6b7280;
+      animation: pulse 2s infinite;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Agenda IMPULSA 2025</h1>
+    <div class="filters">
+      <input type="text" id="search" placeholder="Buscar...">
+      <select id="category">
+        <option value="all">Todas las categorías</option>
+      </select>
+      <button onclick="loadData()">Actualizar</button>
+    </div>
+    <div id="results"><div class="loader">Cargando instituciones...</div></div>
+  </div>
+
+  <script>
+    const SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSnwpcWHJmfgPlUql0j-wogRM4n6rCYLkcBuo4AJMkjV9gRlKtW9JHWpYQ3P-R98JTIpBNXFKtMTqu_/pub?output=csv';
+    let contacts = [];
+
+    function parseCSVLine(line) {
+      const result = [];
+      let current = '', inQuotes = false;
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i], nextChar = line[i + 1];
+        if (char === '"') {
+          if (inQuotes && nextChar === '"') { current += '"'; i++; }
+          else inQuotes = !inQuotes;
+        } else if (char === ',' && !inQuotes) {
+          result.push(current); current = '';
+        } else current += char;
+      }
+      result.push(current);
+      return result;
+    }
+
+    function processData(text) {
+      const lines = text.split('\n');
+      const data = [];
+      for (let i = 1; i < lines.length; i++) {
+        const row = parseCSVLine(lines[i]);
+        const inst = row[5]?.trim(), mail = row[12]?.trim(), phone = row[13]?.trim();
+        if (!inst) continue;
+        let category = 'Organización';
+        const low = inst.toLowerCase();
+        if (low.includes('centro tecnológico')) category = 'Centro Tecnológico';
+        else if (low.includes('utn') || low.includes('universidad')) category = 'Universidad';
+        else if (low.includes('polo tecnológico')) category = 'Polo Tecnológico';
+        else if (low.includes('inta') || low.includes('incuva')) category = 'Instituto';
+        else if (low.includes('aderr')) category = 'Asociación';
+        else if (low.includes('ccir') || low.includes('cámara')) category = 'Cámara de Comercio';
+        else if (low.includes('centro industrial')) category = 'Centro Industrial';
+        else if (low.includes('centro de formación')) category = 'Centro de Formación';
+
+        data.push({ institution: inst, email: mail, phone, category });
+      }
+      return data;
+    }
+
+    function render() {
+      const term = document.getElementById('search').value.toLowerCase();
+      const cat = document.getElementById('category').value;
+      const filtered = contacts.filter(c =>
+        (c.institution.toLowerCase().includes(term) ||
+         c.email.toLowerCase().includes(term) ||
+         c.phone.includes(term)) &&
+        (cat === 'all' || c.category === cat)
+      );
+      const out = filtered.map(c => `
+        <div class="card">
+          <h3>${c.institution}</h3>
+          <p>📧 ${c.email}</p>
+          <p>📞 ${c.phone}</p>
+          <p class="category">🏢 ${c.category}</p>
+        </div>
+      `).join('');
+      document.getElementById('results').innerHTML = out;
+    }
+
+    async function loadData() {
+      document.getElementById('results').innerHTML = '<div class="loader">Cargando instituciones...</div>';
+      try {
+        const res = await fetch(SHEET_URL);
+        const text = await res.text();
+        contacts = processData(text);
+        render();
+        const catSet = new Set(contacts.map(c => c.category));
+        const catSelect = document.getElementById('category');
+        catSelect.innerHTML = '<option value="all">Todas las categorías</option>' +
+          Array.from(catSet).map(cat => `<option value="${cat}">${cat}</option>`).join('');
+      } catch (e) {
+        document.getElementById('results').innerHTML = '<p>Error cargando los datos.</p>';
+      }
+    }
+
+    document.getElementById('search').addEventListener('input', render);
+    document.getElementById('category').addEventListener('change', render);
+    loadData();
+  </script>
+</body>
+</html>
